@@ -9,6 +9,9 @@ import android.util.Log
 import com.nevermiss.app.data.Event
 import com.nevermiss.app.data.EventStatus
 
+import android.net.Uri
+import android.provider.Settings
+
 /**
  * AlarmScheduler: Manages Android AlarmManager exact and low-latency alarms.
  * Schedules the single next upcoming reminder alert per event.
@@ -30,12 +33,37 @@ class AlarmScheduler(private val context: Context) {
     }
 
     /**
-     * Determines and sets the nearest upcoming alarm for an event.
+     * Checks whether the application has permission to schedule exact alarms.
      */
-    fun scheduleNextAlarmForEvent(event: Event) {
+    fun canUseExactAlarms(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            alarmManager?.canScheduleExactAlarms() == true
+        } else {
+            true
+        }
+    }
+
+    /**
+     * Intent to open the Android system settings page for exact alarm permission.
+     */
+    fun exactAlarmPermissionIntent(): Intent {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                data = Uri.parse("package:${context.packageName}")
+            }
+        } else {
+            Intent(Settings.ACTION_SETTINGS)
+        }
+    }
+
+    /**
+     * Determines and sets the nearest upcoming alarm for an event.
+     * Returns the precision mode (EXACT, INEXACT, or NONE) used.
+     */
+    fun scheduleNextAlarmForEvent(event: Event): AlarmMode {
         if (event.status == EventStatus.COMPLETED) {
             cancelAlarmsForEvent(event.id)
-            return
+            return AlarmMode.NONE
         }
 
         val now = System.currentTimeMillis()
@@ -46,8 +74,9 @@ class AlarmScheduler(private val context: Context) {
             .minByOrNull { it.triggerEpochMillis }
 
         if (nextReminder == null) {
-            Log.d(TAG, "No upcoming pending reminders for event: ${event.title}")
-            return
+            Log.d(TAG, "No upcoming pending reminders for event: ${event.title}. Cancelling any lingering alarms.")
+            cancelAlarmsForEvent(event.id)
+            return AlarmMode.NONE
         }
 
         val intent = Intent(context, ReminderReceiver::class.java).apply {
@@ -71,7 +100,7 @@ class AlarmScheduler(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        try {
+        return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (alarmManager?.canScheduleExactAlarms() == true) {
                     alarmManager.setExactAndAllowWhileIdle(
@@ -80,12 +109,14 @@ class AlarmScheduler(private val context: Context) {
                         pendingIntent
                     )
                     Log.d(TAG, "Scheduled exact alarm for ${event.title} at ${nextReminder.triggerEpochMillis}")
+                    AlarmMode.EXACT
                 } else {
                     alarmManager?.setAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         nextReminder.triggerEpochMillis,
                         pendingIntent
                     )
+                    AlarmMode.INEXACT
                 }
             } else {
                 alarmManager?.setExactAndAllowWhileIdle(
@@ -93,15 +124,17 @@ class AlarmScheduler(private val context: Context) {
                     nextReminder.triggerEpochMillis,
                     pendingIntent
                 )
+                AlarmMode.EXACT
             }
         } catch (se: SecurityException) {
-            Log.e(TAG, "SecurityException scheduling exact alarm", se)
+            Log.e(TAG, "SecurityException scheduling exact alarm, falling back to inexact", se)
             // Fallback non-exact
             alarmManager?.set(
                 AlarmManager.RTC_WAKEUP,
                 nextReminder.triggerEpochMillis,
                 pendingIntent
             )
+            AlarmMode.INEXACT
         }
     }
 

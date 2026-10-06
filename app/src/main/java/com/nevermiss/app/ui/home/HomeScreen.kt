@@ -25,6 +25,7 @@ import com.nevermiss.app.data.Category
 import com.nevermiss.app.data.Event
 import com.nevermiss.app.data.EventStatus
 import com.nevermiss.app.logic.EventBucketingLogic
+import com.nevermiss.app.logic.EventLabels
 import com.nevermiss.app.ui.theme.*
 
 @Composable
@@ -369,8 +370,8 @@ fun EventCard(
     onToggleDone: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val countdown = remember(event.targetEpochMillis) {
-        EventBucketingLogic.formatCountdownLabel(event.targetEpochMillis)
+    val countdown = remember(event.targetEpochMillis, event.status) {
+        EventLabels.relative(event)
     }
 
     Card(

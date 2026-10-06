@@ -127,6 +127,73 @@ class EventLabelsTest {
         assertEquals(50, counts.completionRatePercent) // 2 / 4 = 50%
     }
 
+    @Test
+    fun testEventLabelsRelative_Done() {
+        val today = LocalDate.of(2026, 10, 10)
+        val nowEpoch = today.atTime(12, 0).atZone(zoneId).toInstant().toEpochMilli()
+        val event = createMockEvent("done-1", today.minusDays(2), "10:00", EventStatus.COMPLETED)
+
+        assertEquals("Done", EventLabels.relative(event, nowEpoch, zoneId))
+    }
+
+    @Test
+    fun testEventLabelsRelative_DueNow() {
+        val today = LocalDate.of(2026, 10, 10)
+        val nowEpoch = today.atTime(12, 0, 0).atZone(zoneId).toInstant().toEpochMilli()
+        // Event target 20 seconds later
+        val event = createMockEvent("now-1", today, "12:00", EventStatus.PENDING)
+
+        assertEquals("Due now", EventLabels.relative(event, nowEpoch, zoneId))
+    }
+
+    @Test
+    fun testEventLabelsRelative_In15Minutes() {
+        val today = LocalDate.of(2026, 10, 10)
+        val nowEpoch = today.atTime(12, 0, 0).atZone(zoneId).toInstant().toEpochMilli()
+        val targetEpoch = today.atTime(12, 15, 0).atZone(zoneId).toInstant().toEpochMilli()
+        val event = createMockEvent("min-1", today, "12:15", EventStatus.PENDING).copy(targetEpochMillis = targetEpoch)
+
+        assertEquals("In 15 minutes", EventLabels.relative(event, nowEpoch, zoneId))
+    }
+
+    @Test
+    fun testEventLabelsRelative_In2Hours() {
+        val today = LocalDate.of(2026, 10, 10)
+        val nowEpoch = today.atTime(12, 0, 0).atZone(zoneId).toInstant().toEpochMilli()
+        val targetEpoch = today.atTime(14, 0, 0).atZone(zoneId).toInstant().toEpochMilli()
+        val event = createMockEvent("hr-1", today, "14:00", EventStatus.PENDING).copy(targetEpochMillis = targetEpoch)
+
+        assertEquals("In 2 hours", EventLabels.relative(event, nowEpoch, zoneId))
+    }
+
+    @Test
+    fun testEventLabelsRelative_FourDaysLeft() {
+        val today = LocalDate.of(2026, 10, 10)
+        val nowEpoch = today.atTime(12, 0, 0).atZone(zoneId).toInstant().toEpochMilli()
+        val event = createMockEvent("days-1", today.plusDays(4), "14:00", EventStatus.PENDING)
+
+        assertEquals("4 days left", EventLabels.relative(event, nowEpoch, zoneId))
+    }
+
+    @Test
+    fun testEventLabelsRelative_TwoDaysOverdue() {
+        val today = LocalDate.of(2026, 10, 10)
+        val nowEpoch = today.atTime(12, 0, 0).atZone(zoneId).toInstant().toEpochMilli()
+        val event = createMockEvent("overdue-1", today.minusDays(2), "14:00", EventStatus.PENDING)
+
+        assertEquals("2 days overdue", EventLabels.relative(event, nowEpoch, zoneId))
+    }
+
+    @Test
+    fun testEventLabelsRelative_ThreeHoursOverdue() {
+        val today = LocalDate.of(2026, 10, 10)
+        val nowEpoch = today.atTime(15, 0, 0).atZone(zoneId).toInstant().toEpochMilli()
+        val targetEpoch = today.atTime(12, 0, 0).atZone(zoneId).toInstant().toEpochMilli()
+        val event = createMockEvent("overdue-hr", today, "12:00", EventStatus.PENDING).copy(targetEpochMillis = targetEpoch)
+
+        assertEquals("3 hours overdue", EventLabels.relative(event, nowEpoch, zoneId))
+    }
+
     private fun createMockEvent(
         id: String,
         date: LocalDate,

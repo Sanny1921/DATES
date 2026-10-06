@@ -12,6 +12,8 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 
+import androidx.room.TypeConverters
+
 /**
  * EventDatabase: Local persistent SQLite storage via Android Jetpack Room.
  * Handles database creation and default seed events.
@@ -21,9 +23,11 @@ import java.time.ZoneId
     version = 1,
     exportSchema = false
 )
+@TypeConverters(EventConverters::class)
 abstract class EventDatabase : RoomDatabase() {
 
     abstract fun eventDao(): EventDao
+    abstract fun reminderDao(): ReminderDao
 
     companion object {
         @Volatile

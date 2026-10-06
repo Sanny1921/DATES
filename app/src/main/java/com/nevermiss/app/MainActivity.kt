@@ -9,19 +9,25 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.nevermiss.app.data.Event
 import com.nevermiss.app.logic.AppGraph
+import com.nevermiss.app.reminders.AlarmMode
 import com.nevermiss.app.reminders.NotificationHelper
 import com.nevermiss.app.ui.calendar.CalendarScreen
 import com.nevermiss.app.ui.create.CreateEventScreen
@@ -86,7 +92,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
-        val targetEventId = intent?.getStringExtra(NotificationHelper.EXTRA_TARGET_EVENT_ID)
+        val targetEventId = NotificationHelper.eventIdFromIntent(intent)
         if (!targetEventId.isNullOrBlank()) {
             initialTargetEventIdState.value = targetEventId
         }
@@ -98,29 +104,44 @@ fun NeverMissMainApp(
     initialTargetEventId: String?,
     onClearTargetEventId: () -> Unit
 ) {
+    val context = LocalContext.current
     val repository = remember { AppGraph.repository }
     val events by repository.getAllEvents().collectAsStateWithLifecycle(initialValue = emptyList())
 
     val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
     var selectedEvent by remember { mutableStateOf<Event?>(null) }
+    var eventToEdit by remember { mutableStateOf<Event?>(null) }
     var createInitialDate by remember { mutableStateOf<LocalDate?>(null) }
+
+    var hasExactAlarm by remember { mutableStateOf(AppGraph.alarmScheduler.canUseExactAlarms()) }
+    var hasNotificationPermission by remember { mutableStateOf(NotificationHelper.canNotify(context)) }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        hasExactAlarm = AppGraph.alarmScheduler.canUseExactAlarms()
+        hasNotificationPermission = NotificationHelper.canNotify(context)
+    }
 
     // Android hardware back / gesture navigation:
     // When on CREATE, DETAIL, CALENDAR, or HISTORY, back returns to HOME.
     // When on HOME, back exits the app normally.
     BackHandler(enabled = currentScreen != AppScreen.HOME) {
+        eventToEdit = null
         currentScreen = AppScreen.HOME
     }
 
     // React to notification deep link target event ID
     LaunchedEffect(initialTargetEventId, events) {
-        if (!initialTargetEventId.isNullOrBlank() && events.isNotEmpty()) {
+        if (!initialTargetEventId.isNullOrBlank()) {
             val target = events.find { it.id == initialTargetEventId }
             if (target != null) {
                 selectedEvent = target
                 currentScreen = AppScreen.DETAIL
+                onClearTargetEventId()
+            } else if (events.isNotEmpty()) {
+                snackbarHostState.showSnackbar("Event no longer exists")
                 onClearTargetEventId()
             }
         }
@@ -128,6 +149,7 @@ fun NeverMissMainApp(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         bottomBar = {
             if (currentScreen != AppScreen.CREATE && currentScreen != AppScreen.DETAIL) {
                 NavigationBar(
@@ -161,6 +183,7 @@ fun NeverMissMainApp(
                     NavigationBarItem(
                         selected = currentScreen == AppScreen.CREATE,
                         onClick = {
+                            eventToEdit = null
                             createInitialDate = null
                             currentScreen = AppScreen.CREATE
                         },
@@ -188,100 +211,155 @@ fun NeverMissMainApp(
             }
         }
     ) { innerPadding ->
-        when (currentScreen) {
-            AppScreen.HOME -> {
-                HomeScreen(
-                    events = events,
-                    onEventClick = { event ->
-                        selectedEvent = event
-                        currentScreen = AppScreen.DETAIL
-                    },
-                    onToggleDone = { event ->
-                        coroutineScope.launch {
-                            val isDone = event.status == com.nevermiss.app.data.EventStatus.COMPLETED
-                            repository.markDone(event.id, !isDone)
-                        }
-                    },
-                    onAddClick = {
-                        createInitialDate = null
-                        currentScreen = AppScreen.CREATE
-                    },
-                    modifier = Modifier.padding(innerPadding)
-                )
-            }
-
-            AppScreen.CALENDAR -> {
-                CalendarScreen(
-                    events = events,
-                    onEventClick = { event ->
-                        selectedEvent = event
-                        currentScreen = AppScreen.DETAIL
-                    },
-                    onToggleDone = { event ->
-                        coroutineScope.launch {
-                            val isDone = event.status == com.nevermiss.app.data.EventStatus.COMPLETED
-                            repository.markDone(event.id, !isDone)
-                        }
-                    },
-                    onAddDateClick = { date ->
-                        createInitialDate = date
-                        currentScreen = AppScreen.CREATE
-                    },
-                    modifier = Modifier.padding(innerPadding)
-                )
-            }
-
-            AppScreen.CREATE -> {
-                CreateEventScreen(
-                    initialDate = createInitialDate,
-                    onSaveEvent = { newEvent ->
-                        coroutineScope.launch {
-                            repository.saveEvent(newEvent)
-                            currentScreen = AppScreen.HOME
-                        }
-                    },
-                    onBack = { currentScreen = AppScreen.HOME }
-                )
-            }
-
-            AppScreen.HISTORY -> {
-                HistoryScreen(
-                    events = events,
-                    onRestoreEvent = { event ->
-                        coroutineScope.launch {
-                            repository.markDone(event.id, false)
-                        }
-                    },
-                    onDeleteEvent = { event ->
-                        coroutineScope.launch {
-                            repository.deleteEvent(event.id)
-                        }
-                    },
-                    modifier = Modifier.padding(innerPadding)
-                )
-            }
-
-            AppScreen.DETAIL -> {
-                val currentEvent = events.find { it.id == selectedEvent?.id } ?: selectedEvent
-                if (currentEvent != null) {
-                    EventDetailScreen(
-                        event = currentEvent,
-                        onBack = { currentScreen = AppScreen.HOME },
-                        onToggleDone = { event ->
-                            coroutineScope.launch {
-                                val isDone = event.status == com.nevermiss.app.data.EventStatus.COMPLETED
-                                repository.markDone(event.id, !isDone)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            if (!hasExactAlarm) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            try {
+                                context.startActivity(AppGraph.alarmScheduler.exactAlarmPermissionIntent())
+                            } catch (e: Exception) {
+                                // Fallback
                             }
-                        },
-                        onDeleteEvent = { event ->
-                            coroutineScope.launch {
-                                repository.deleteEvent(event.id)
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = "Exact Alarms Warning",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Exact alarms disabled. Reminders will fire in inexact fallback mode. Tap to enable.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            Box(modifier = Modifier.weight(1f)) {
+                when (currentScreen) {
+                    AppScreen.HOME -> {
+                        HomeScreen(
+                            events = events,
+                            onEventClick = { event ->
+                                selectedEvent = event
+                                currentScreen = AppScreen.DETAIL
+                            },
+                            onToggleDone = { event ->
+                                coroutineScope.launch {
+                                    val isDone = event.status == com.nevermiss.app.data.EventStatus.COMPLETED
+                                    repository.markDone(event.id, !isDone)
+                                }
+                            },
+                            onAddClick = {
+                                eventToEdit = null
+                                createInitialDate = null
+                                currentScreen = AppScreen.CREATE
+                            }
+                        )
+                    }
+
+                    AppScreen.CALENDAR -> {
+                        CalendarScreen(
+                            events = events,
+                            onEventClick = { event ->
+                                selectedEvent = event
+                                currentScreen = AppScreen.DETAIL
+                            },
+                            onToggleDone = { event ->
+                                coroutineScope.launch {
+                                    val isDone = event.status == com.nevermiss.app.data.EventStatus.COMPLETED
+                                    repository.markDone(event.id, !isDone)
+                                }
+                            },
+                            onAddDateClick = { date ->
+                                eventToEdit = null
+                                createInitialDate = date
+                                currentScreen = AppScreen.CREATE
+                            }
+                        )
+                    }
+
+                    AppScreen.CREATE -> {
+                        CreateEventScreen(
+                            initialDate = createInitialDate,
+                            eventToEdit = eventToEdit,
+                            onSaveEvent = { newEvent ->
+                                coroutineScope.launch {
+                                    val result = repository.insert(newEvent)
+                                    if (result.alarmMode == AlarmMode.INEXACT) {
+                                        snackbarHostState.showSnackbar("Saved! Alarms will fire in inexact mode because exact alarm permission is disabled.")
+                                    }
+                                    eventToEdit = null
+                                    createInitialDate = null
+                                    currentScreen = AppScreen.HOME
+                                }
+                            },
+                            onBack = {
+                                eventToEdit = null
+                                createInitialDate = null
                                 currentScreen = AppScreen.HOME
                             }
+                        )
+                    }
+
+                    AppScreen.HISTORY -> {
+                        HistoryScreen(
+                            events = events,
+                            onRestoreEvent = { event ->
+                                coroutineScope.launch {
+                                    repository.markDone(event.id, false)
+                                }
+                            },
+                            onDeleteEvent = { event ->
+                                coroutineScope.launch {
+                                    repository.deleteEvent(event.id)
+                                }
+                            }
+                        )
+                    }
+
+                    AppScreen.DETAIL -> {
+                        val currentEvent = events.find { it.id == selectedEvent?.id } ?: selectedEvent
+                        if (currentEvent != null) {
+                            EventDetailScreen(
+                                event = currentEvent,
+                                onBack = { currentScreen = AppScreen.HOME },
+                                onToggleDone = { event ->
+                                    coroutineScope.launch {
+                                        val isDone = event.status == com.nevermiss.app.data.EventStatus.COMPLETED
+                                        repository.markDone(event.id, !isDone)
+                                    }
+                                },
+                                onDeleteEvent = { event ->
+                                    coroutineScope.launch {
+                                        repository.deleteEvent(event.id)
+                                        currentScreen = AppScreen.HOME
+                                    }
+                                },
+                                onEditEvent = { event ->
+                                    eventToEdit = event
+                                    currentScreen = AppScreen.CREATE
+                                }
+                            )
+                        } else {
+                            currentScreen = AppScreen.HOME
                         }
-                    )
-                } else {
-                    currentScreen = AppScreen.HOME
+                    }
                 }
             }
         }

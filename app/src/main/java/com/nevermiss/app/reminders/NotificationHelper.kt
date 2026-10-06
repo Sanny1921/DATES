@@ -12,6 +12,9 @@ import androidx.core.app.NotificationManagerCompat
 import com.nevermiss.app.MainActivity
 import com.nevermiss.app.R
 
+import android.net.Uri
+import com.nevermiss.app.data.Event
+
 /**
  * NotificationHelper: Creates notification channels and builds rich tactile local notifications.
  * Tapping a notification opens MainActivity directly focused on the target event.
@@ -25,6 +28,46 @@ class NotificationHelper(private val context: Context) {
         const val CHANNEL_URGENT = "nevermiss_urgent_channel"
         const val CHANNEL_NORMAL = "nevermiss_normal_channel"
         const val EXTRA_TARGET_EVENT_ID = "extra_event_id"
+
+        /**
+         * Checks if the app has notification permissions granted.
+         */
+        fun canNotify(context: Context): Boolean {
+            return NotificationManagerCompat.from(context).areNotificationsEnabled()
+        }
+
+        /**
+         * Extracts target event ID from incoming notification intent or deep-link URI.
+         */
+        fun eventIdFromIntent(intent: Intent?): String? {
+            if (intent == null) return null
+            val fromExtra = intent.getStringExtra(EXTRA_TARGET_EVENT_ID)
+            if (!fromExtra.isNullOrBlank()) return fromExtra
+
+            val data = intent.data
+            if (data != null && data.scheme == "offline-events" && data.host == "event") {
+                return data.lastPathSegment
+            }
+            return null
+        }
+
+        /**
+         * Creates notification channels statically.
+         */
+        fun createChannel(context: Context) {
+            NotificationHelper(context).createNotificationChannels()
+        }
+
+        /**
+         * Formats body text for notifications according to specification.
+         */
+        fun body(event: Event): String {
+            return if (event.notes.isNotBlank()) {
+                "${event.notes} • Due: ${event.targetDate} at ${event.targetTime}"
+            } else {
+                "Due: ${event.targetDate} at ${event.targetTime}"
+            }
+        }
     }
 
     /**
@@ -74,9 +117,10 @@ class NotificationHelper(private val context: Context) {
             CHANNEL_NORMAL
         }
 
-        // Tap opens MainActivity with target event ID
+        // Tap opens MainActivity with target event ID and deep-link URI: offline-events://event/<id>
         val openIntent = Intent(context, MainActivity::class.java).apply {
             action = "com.nevermiss.app.OPEN_EVENT"
+            data = Uri.parse("offline-events://event/$eventId")
             putExtra(EXTRA_TARGET_EVENT_ID, eventId)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }

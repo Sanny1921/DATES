@@ -30,13 +30,21 @@ class ReminderWorker(
             val events = AppGraph.repository.getAllEvents().first()
 
             for (event in events) {
-                // Find any overdue undelivered reminders that might have been missed
-                val missedReminders = event.reminders.filter {
-                    !it.isDelivered && it.triggerEpochMillis in (now - 24 * 3600 * 1000)..now
+                // Find any overdue undelivered reminders that might have been missed (within 7 days)
+                val recentMissedReminders = event.reminders.filter {
+                    !it.isDelivered && it.triggerEpochMillis in (now - 7L * 24 * 3600 * 1000)..now
                 }
 
-                if (missedReminders.isNotEmpty()) {
-                    for (missed in missedReminders) {
+                // Any reminders older than 7 days should be marked handled without blasting alerts
+                val ancientMissedReminders = event.reminders.filter {
+                    !it.isDelivered && it.triggerEpochMillis < (now - 7L * 24 * 3600 * 1000)
+                }
+                for (ancient in ancientMissedReminders) {
+                    AppGraph.repository.markReminderDelivered(ancient.id, event.id)
+                }
+
+                if (recentMissedReminders.isNotEmpty()) {
+                    for (missed in recentMissedReminders) {
                         Log.w(TAG, "Found missed reminder for event: ${event.title}, alerting now.")
                         AppGraph.notificationHelper.showReminderNotification(
                             eventId = event.id,
@@ -50,7 +58,7 @@ class ReminderWorker(
                         AppGraph.repository.markReminderDelivered(missed.id, event.id)
                     }
                     // Do not call scheduleNextAlarmForEvent using the stale Event object after markReminderDelivered()
-                } else if (event.status != com.nevermiss.app.data.EventStatus.COMPLETED) {
+                } else if (ancientMissedReminders.isEmpty() && event.status != com.nevermiss.app.data.EventStatus.COMPLETED) {
                     // No reminders modified for this event; verify upcoming alarm is active
                     AppGraph.alarmScheduler.scheduleNextAlarmForEvent(event)
                 }

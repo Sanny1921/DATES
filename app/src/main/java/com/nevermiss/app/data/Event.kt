@@ -6,17 +6,23 @@ package com.nevermiss.app.data
 data class Event(
     val id: String,
     val title: String,
-    val category: Category,
+    val category: Category = Category.Other,
+    val type: EventType = EventType.OTHER,
     val targetDate: String, // YYYY-MM-DD
     val targetTime: String, // HH:mm
     val targetEpochMillis: Long,
-    val priority: Priority,
+    val priority: Priority = Priority.MEDIUM,
     val notes: String = "",
     val status: EventStatus = EventStatus.PENDING,
     val completedAtEpochMillis: Long? = null,
     val createdAtEpochMillis: Long = System.currentTimeMillis(),
+    val updatedAtEpochMillis: Long = System.currentTimeMillis(),
     val reminders: List<ReminderAlert> = emptyList()
-)
+) {
+    val eventAtMillis: Long get() = targetEpochMillis
+    val done: Boolean get() = status == EventStatus.COMPLETED
+    val subject: String get() = notes
+}
 
 data class ReminderAlert(
     val id: String,
@@ -103,12 +109,30 @@ enum class Severity {
     }
 }
 
+fun Category.toEventType(): EventType = when (this) {
+    Category.Birthday -> EventType.BIRTHDAY
+    Category.Education -> EventType.EXAM
+    Category.Work -> EventType.MEETING
+    else -> EventType.OTHER
+}
+
+fun EventType.toCategory(): Category = when (this) {
+    EventType.BIRTHDAY -> Category.Birthday
+    EventType.EXAM -> Category.Education
+    EventType.ASSIGNMENT -> Category.Education
+    EventType.MEETING -> Category.Work
+    EventType.OTHER -> Category.Other
+}
+
 // Extension mappers between Domain & Entities
 fun EventWithReminders.toDomain(): Event {
+    val cat = Category.fromString(event.category)
+    val eventType = EventType.fromString(event.category)
     return Event(
         id = event.id,
         title = event.title,
-        category = Category.fromString(event.category),
+        category = cat,
+        type = if (eventType != EventType.OTHER) eventType else cat.toEventType(),
         targetDate = event.targetDate,
         targetTime = event.targetTime,
         targetEpochMillis = event.targetEpochMillis,
@@ -117,6 +141,7 @@ fun EventWithReminders.toDomain(): Event {
         status = EventStatus.fromString(event.status),
         completedAtEpochMillis = event.completedAtEpochMillis,
         createdAtEpochMillis = event.createdAtEpochMillis,
+        updatedAtEpochMillis = event.createdAtEpochMillis,
         reminders = reminders.map { it.toDomain() }
     )
 }
@@ -138,10 +163,11 @@ fun ReminderEntity.toDomain(): ReminderAlert {
 }
 
 fun Event.toEntity(): EventEntity {
+    val categoryString = if (type != EventType.OTHER) type.name else category.name
     return EventEntity(
         id = id,
         title = title,
-        category = category.name,
+        category = categoryString,
         targetDate = targetDate,
         targetTime = targetTime,
         targetEpochMillis = targetEpochMillis,

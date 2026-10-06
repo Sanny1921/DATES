@@ -4,14 +4,13 @@
     <!-- Permissions for Offline Alarms and Notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".NeverMissApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -30,10 +29,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep link filter for notifications -->
+            <!-- Custom action deep link for notifications -->
             <intent-filter>
                 <action android:name="com.nevermiss.app.OPEN_EVENT" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
+            <!-- URI scheme deep link filter: offline-events://event/<id> -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="offline-events" android:host="event" />
             </intent-filter>
         </activity>
 
@@ -46,7 +53,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Broadcast Receiver to reschedule alarms after device reboot -->
+        <!-- Broadcast Receiver to reschedule alarms after device reboot or time change -->
         <receiver
             android:name=".reminders.BootReceiver"
             android:enabled="true"
@@ -56,6 +63,8 @@
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
             </intent-filter>
         </receiver>
 

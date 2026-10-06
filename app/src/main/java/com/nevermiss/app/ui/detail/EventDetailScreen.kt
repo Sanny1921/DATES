@@ -9,8 +9,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
+import com.nevermiss.app.logic.EventLabels
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,13 +30,39 @@ fun EventDetailScreen(
     onBack: () -> Unit,
     onToggleDone: (Event) -> Unit,
     onDeleteEvent: (Event) -> Unit,
+    onEditEvent: (Event) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val countdown = remember(event.targetEpochMillis) {
-        EventBucketingLogic.formatCountdownLabel(event.targetEpochMillis)
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+
+    val countdown = remember(event.targetEpochMillis, event.status) {
+        EventLabels.relative(event)
     }
     val badge = remember(event.targetEpochMillis, event.status) {
         EventBucketingLogic.getUrgencyBadge(event.targetEpochMillis, event.status)
+    }
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete Event?", fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to permanently delete \"${event.title}\"? All scheduled alarms will be cancelled.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmation = false
+                        onDeleteEvent(event)
+                    }
+                ) {
+                    Text("Delete", color = UrgencyRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -51,7 +77,10 @@ fun EventDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { onDeleteEvent(event) }) {
+                    IconButton(onClick = { onEditEvent(event) }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit Event", tint = BrandOrange)
+                    }
+                    IconButton(onClick = { showDeleteConfirmation = true }) {
                         Icon(Icons.Default.DeleteOutline, contentDescription = "Delete Event", tint = UrgencyRed)
                     }
                 },

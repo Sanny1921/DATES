@@ -13,11 +13,78 @@ import java.time.temporal.ChronoUnit
  * Partitions events into Overdue, Today, Upcoming, and Completed buckets.
  */
 data class EventBuckets(
-    val overdue: List<Event>,
-    val today: List<Event>,
-    val upcoming: List<Event>,
-    val completed: List<Event>
-)
+    val overdue: List<Event> = emptyList(),
+    val today: List<Event> = emptyList(),
+    val upcoming: List<Event> = emptyList(),
+    val completed: List<Event> = emptyList()
+) {
+    val overdueCount: Int get() = overdue.size
+    val todayCount: Int get() = today.size
+    val upcomingCount: Int get() = upcoming.size
+    val isEmpty: Boolean get() = overdue.isEmpty() && today.isEmpty() && upcoming.isEmpty() && completed.isEmpty()
+}
+
+/**
+ * EventLabels: Standard relative time label generator matching NeverMiss Solution specification.
+ */
+object EventLabels {
+
+    /**
+     * Generates standard relative labels: "Done", "Due now", "In 15 minutes", "In 2 hours", "4 days left", "2 days overdue", "3 hours overdue".
+     */
+    fun relative(
+        event: Event,
+        nowEpochMillis: Long = System.currentTimeMillis(),
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): String {
+        if (event.status == EventStatus.COMPLETED) {
+            return "Done"
+        }
+
+        val nowDate = Instant.ofEpochMilli(nowEpochMillis).atZone(zoneId).toLocalDate()
+        val targetDate = Instant.ofEpochMilli(event.targetEpochMillis).atZone(zoneId).toLocalDate()
+
+        val millisDiff = event.targetEpochMillis - nowEpochMillis
+        val daysDiff = ChronoUnit.DAYS.between(nowDate, targetDate)
+
+        // Exact moment within 60 seconds
+        if (kotlin.math.abs(millisDiff) < 60_000L) {
+            return "Due now"
+        }
+
+        return when {
+            // Past event (overdue)
+            millisDiff < 0 -> {
+                if (nowDate == targetDate) {
+                    val hoursPast = (-millisDiff) / (1000 * 3600)
+                    if (hoursPast > 0) {
+                        "$hoursPast ${if (hoursPast == 1L) "hour" else "hours"} overdue"
+                    } else {
+                        val minutesPast = ((-millisDiff) / (1000 * 60)).coerceAtLeast(1)
+                        "$minutesPast ${if (minutesPast == 1L) "minute" else "minutes"} overdue"
+                    }
+                } else {
+                    val daysOverdue = ChronoUnit.DAYS.between(targetDate, nowDate)
+                    "$daysOverdue ${if (daysOverdue == 1L) "day" else "days"} overdue"
+                }
+            }
+            // Same day future
+            nowDate == targetDate -> {
+                val hoursRemaining = millisDiff / (1000 * 3600)
+                if (hoursRemaining > 0) {
+                    "In $hoursRemaining ${if (hoursRemaining == 1L) "hour" else "hours"}"
+                } else {
+                    val minutesRemaining = (millisDiff / (1000 * 60)).coerceAtLeast(1)
+                    "In $minutesRemaining ${if (minutesRemaining == 1L) "minute" else "minutes"}"
+                }
+            }
+            // Future different day
+            else -> {
+                "$daysDiff ${if (daysDiff == 1L) "day" else "days"} left"
+            }
+        }
+    }
+}
 
 data class BucketCounts(
     val overdueCount: Int,
