@@ -1,20 +1,19 @@
-# Dependencies
-node_modules/
+# Gradle & Build
 .gradle/
 build/
 app/build/
-dist/
-coverage/
+
+# Local configuration
+local.properties
+.env*
 
 # IDE & OS
-.DS_Store
-*.log
 .idea/
 *.iml
-local.properties
+.DS_Store
+*.log
 .vscode/
 .antigravity/
 
-# Environment files
-.env*
-!.env.example
+# Captures and profiling
+*.hprof

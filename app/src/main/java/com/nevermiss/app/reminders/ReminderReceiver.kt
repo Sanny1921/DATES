@@ -7,6 +7,7 @@ import android.util.Log
 import com.nevermiss.app.logic.AppGraph
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -31,25 +32,31 @@ class ReminderReceiver : BroadcastReceiver() {
 
         AppGraph.init(context)
 
-        // 1. Post the notification immediately
-        AppGraph.notificationHelper.showReminderNotification(
-            eventId = eventId,
-            reminderId = reminderId,
-            title = title,
-            note = note,
-            severity = severity,
-            targetTime = targetTime
-        )
-
-        // 2. Mark delivered and schedule next alarm in pipeline asynchronously
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                val event = AppGraph.repository.getEventById(eventId).first()
+                if (event == null || event.status == com.nevermiss.app.data.EventStatus.COMPLETED) {
+                    Log.d(TAG, "Event $eventId no longer active or already completed. Skipping reminder notification.")
+                    return@launch
+                }
+
+                // 1. Post notification
+                AppGraph.notificationHelper.showReminderNotification(
+                    eventId = eventId,
+                    reminderId = reminderId,
+                    title = event.title,
+                    note = event.notes,
+                    severity = severity,
+                    targetTime = event.targetTime
+                )
+
+                // 2. Mark handled and schedule next future reminder
                 if (reminderId.isNotEmpty()) {
                     AppGraph.repository.markReminderDelivered(reminderId, eventId)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error updating reminder delivered state", e)
+                Log.e(TAG, "Error handling reminder", e)
             } finally {
                 pendingResult.finish()
             }
