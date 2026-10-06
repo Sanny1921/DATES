@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">NeverMiss</string>
+    <string name="tagline">Your personal assistant for important dates.</string>
+    <string name="notification_channel_urgent">Critical Deadlines</string>
+    <string name="notification_channel_urgent_desc">Immediate loud reminders for due and imminent deadlines.</string>
+    <string name="notification_channel_normal">Upcoming Reminders</string>
+    <string name="notification_channel_normal_desc">Standard alerts for upcoming dates and milestones.</string>
+</resources>

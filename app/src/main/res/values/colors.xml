@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_orange">#FF7A00</color>
+    <color name="brand_orange_dark">#E66E00</color>
+    <color name="brand_orange_light">#FFF4EC</color>
+    <color name="canvas_bg">#F8F9FA</color>
+    <color name="surface_white">#FFFFFF</color>
+    <color name="text_headline">#111827</color>
+    <color name="text_body">#4B5563</color>
+    <color name="text_muted">#9CA3AF</color>
+    <color name="urgency_red">#EF4444</color>
+    <color name="urgency_orange">#F97316</color>
+    <color name="urgency_amber">#F59E0B</color>
+    <color name="urgency_green">#10B981</color>
+</resources>
