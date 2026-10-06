@@ -35,21 +35,25 @@ class ReminderWorker(
                     !it.isDelivered && it.triggerEpochMillis in (now - 24 * 3600 * 1000)..now
                 }
 
-                for (missed in missedReminders) {
-                    Log.w(TAG, "Found missed reminder for event: ${event.title}, alerting now.")
-                    AppGraph.notificationHelper.showReminderNotification(
-                        eventId = event.id,
-                        reminderId = missed.id,
-                        title = event.title,
-                        note = "Missed alert: ${missed.note.ifBlank { missed.label }}",
-                        severity = missed.severity.name,
-                        targetTime = "${event.targetDate} • ${event.targetTime}"
-                    )
-                    AppGraph.repository.markReminderDelivered(missed.id, event.id)
+                if (missedReminders.isNotEmpty()) {
+                    for (missed in missedReminders) {
+                        Log.w(TAG, "Found missed reminder for event: ${event.title}, alerting now.")
+                        AppGraph.notificationHelper.showReminderNotification(
+                            eventId = event.id,
+                            reminderId = missed.id,
+                            title = event.title,
+                            note = "Missed alert: ${missed.note.ifBlank { missed.label }}",
+                            severity = missed.severity.name,
+                            targetTime = "${event.targetDate} • ${event.targetTime}"
+                        )
+                        // markReminderDelivered updates Room and schedules the next alarm using fresh database state
+                        AppGraph.repository.markReminderDelivered(missed.id, event.id)
+                    }
+                    // Do not call scheduleNextAlarmForEvent using the stale Event object after markReminderDelivered()
+                } else if (event.status != com.nevermiss.app.data.EventStatus.COMPLETED) {
+                    // No reminders modified for this event; verify upcoming alarm is active
+                    AppGraph.alarmScheduler.scheduleNextAlarmForEvent(event)
                 }
-
-                // Verify upcoming alarm is active
-                AppGraph.alarmScheduler.scheduleNextAlarmForEvent(event)
             }
 
             Result.success()

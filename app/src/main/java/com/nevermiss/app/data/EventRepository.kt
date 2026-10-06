@@ -2,6 +2,7 @@ package com.nevermiss.app.data
 
 import com.nevermiss.app.reminders.AlarmScheduler
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
@@ -94,4 +95,21 @@ class EventRepository(
             alarmScheduler.scheduleNextAlarmForEvent(event)
         }
     }
+
+    /**
+     * Reschedules next upcoming alarms for all active events.
+     * Used after initial seed insertion, device reboot, app updates, or timezone changes.
+     */
+    suspend fun restoreFutureAlarms() {
+        val events = getAllEvents().first()
+        alarmScheduler.rescheduleAll(events)
+    }
+
+    // Repository specification method aliases
+    fun observeAll(): Flow<List<Event>> = getAllEvents()
+    fun getById(id: String): Flow<Event?> = getEventById(id)
+    suspend fun insert(event: Event): Result<Event> = saveEvent(event)
+    suspend fun update(event: Event): Result<Event> = saveEvent(event)
+    suspend fun setDone(id: String, done: Boolean) = markDone(id, done)
+    suspend fun delete(id: String) = deleteEvent(id)
 }

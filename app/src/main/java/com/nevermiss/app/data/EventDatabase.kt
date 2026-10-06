@@ -29,6 +29,13 @@ abstract class EventDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: EventDatabase? = null
 
+        /**
+         * Optional listener invoked when initial seed events have been inserted for the first time.
+         * Keeping this decoupled prevents circular architectural dependencies between EventDatabase and AppGraph.
+         */
+        @Volatile
+        var onSeedComplete: (() -> Unit)? = null
+
         fun getInstance(context: Context): EventDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -51,14 +58,18 @@ abstract class EventDatabase : RoomDatabase() {
         override fun onCreate(db: SupportSQLiteDatabase) {
             super.onCreate(db)
             CoroutineScope(Dispatchers.IO).launch {
-                getInstance(context).seedInitialEvents()
+                val dbInstance = getInstance(context)
+                val seeded = dbInstance.seedInitialEvents()
+                if (seeded) {
+                    onSeedComplete?.invoke()
+                }
             }
         }
     }
 
-    suspend fun seedInitialEvents() {
+    suspend fun seedInitialEvents(): Boolean {
         val dao = eventDao()
-        if (dao.getCount() > 0) return
+        if (dao.getCount() > 0) return false
 
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
@@ -179,5 +190,6 @@ abstract class EventDatabase : RoomDatabase() {
             completedAtEpochMillis = pastEpoch + 3600000
         )
         dao.upsertEventWithReminders(completedEntity, emptyList())
+        return true
     }
 }

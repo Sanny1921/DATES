@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
@@ -105,6 +106,13 @@ fun NeverMissMainApp(
     var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
     var selectedEvent by remember { mutableStateOf<Event?>(null) }
     var createInitialDate by remember { mutableStateOf<LocalDate?>(null) }
+
+    // Android hardware back / gesture navigation:
+    // When on CREATE, DETAIL, CALENDAR, or HISTORY, back returns to HOME.
+    // When on HOME, back exits the app normally.
+    BackHandler(enabled = currentScreen != AppScreen.HOME) {
+        currentScreen = AppScreen.HOME
+    }
 
     // React to notification deep link target event ID
     LaunchedEffect(initialTargetEventId, events) {
